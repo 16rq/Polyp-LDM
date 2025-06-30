@@ -1,0 +1,101 @@
+model:
+  base_learning_rate: 2.0e-06
+  target: ldm.models.diffusion.mmddpm_ldm1_GMS.LatentDiffusion
+  params:
+    linear_start: 0.0015
+    linear_end: 0.0195
+    num_timesteps_cond: 1
+    log_every_t: 200
+    timesteps: 1000
+    first_stage_key: image
+    cond_stage_key: caption
+    image_size: 32 ##
+    channels: 4 ##
+    cond_stage_trainable: true
+    conditioning_key: crossattn
+    monitor: val/loss_simple_ema
+
+    # scheduler_config
+    unet_config:
+      target: ldm.modules.diffusionmodules.openaimodel.UNetModel
+      params:
+        image_size: 32 ##
+        in_channels: 4 ##
+        out_channels: 4 ##
+        model_channels: 192
+        attention_resolutions: [ 1, 2, 4, 8 ] 
+        num_res_blocks: 2
+        channel_mult: [ 1,2,2,4,4 ] 
+        num_head_channels: 8 #
+        use_spatial_transformer: true 
+        transformer_depth: 1
+        context_dim: 640
+
+    first_stage_config:
+      # target: ldm.models.autoencoder.AutoencoderKL_rimage
+      target: ldm.models.autoencoder.AutoencoderKL_rimage_finetune
+      params:
+        ckpt_path:  '/data6/ryqiu/latent-diffusion/logs/2024-10-24T15-35-15_autoencoder_kl_32x32x4_rimage_onlyDecoder/checkpoints/epoch=000933.ckpt'
+        # ckpt_path: '/data6/ryqiu/latent-diffusion/logs/2024-09-06T18-36-14_autoencoder_kl_32x32x4_rimage_finetune/checkpoints/epoch=000031.ckpt'
+        embed_dim: 4 
+        ddconfig:
+          double_z: True
+          z_channels: 4 ##
+          resolution: 256
+          in_channels: 3
+          out_ch: 3
+          ch: 128
+          ch_mult: [ 1,2,4,4 ]
+          num_res_blocks: 2
+          attn_resolutions: []
+          dropout: 0.0
+        lossconfig:
+          target: torch.nn.Identity
+          
+    cond_stage_config:
+      target: ldm.modules.encoders.modules.BERTEmbedder
+      params:
+        n_embed: 640
+        n_layer: 32
+
+data:
+  target: main.DataModuleFromConfig
+  params:
+    batch_size: 2
+    # num_workers: 2
+    wrap: false
+    train:
+      target: ldm.data.mask_ldm1.ImageNetTrain
+      params:
+        config:
+          size: 256
+          shuffle: false 
+    validation:
+      target: ldm.data.mask_ldm1.ImageNetValidation
+      params:
+        config:
+          size: 256
+          shuffle: false 
+    test:
+      target: ldm.data.mask_ldm1.ImageNetValidation
+      params:
+        config:
+          size: 256
+          shuffle: false 
+          
+lightning:
+  callbacks:
+    image_logger:
+      target: main.ImageLogger
+      params:
+        batch_frequency: 5000 #(bf - 5)/log_prequency=45(quantity in batch)
+        max_images: 8
+        increase_log_steps: False
+
+
+  trainer:
+    benchmark: True
+    gpus: 1 
+    max_epochs: 1000 # build nose-number pairs
+ 
+    # val_check_interval: 

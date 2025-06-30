@@ -1,0 +1,135 @@
+model:
+  base_learning_rate: 5.0e-5   # set to target_lr by starting main.py with '--scale_lr False'
+  target: ldm.models.diffusion.mmddpm_ldm2_base.LatentDiffusion
+  params:
+    linear_start: 0.0015
+    linear_end: 0.0155
+    num_timesteps_cond: 1
+    log_every_t: 200
+    timesteps: 1000
+    loss_type: l1
+    first_stage_key: "image"
+    cond_stage_key: "c_mask"
+    image_size: 32
+    channels: 4
+    cond_stage_trainable: false
+    concat_mode: True
+    scale_by_std: True
+    monitor: 'val/loss_simple_ema'
+    conditioning_key: 'hybrid' 
+    # conditioning_key: 'concat_crossattn'
+    scheduler_config: # 10000 warmup steps
+      target: ldm.lr_scheduler.LambdaLinearScheduler
+      params:
+        warm_up_steps: [10000]
+        cycle_lengths: [10000000000000]
+        f_start: [1.e-6]
+        f_max: [1.]
+        f_min: [ 1.]
+
+    unet_config:
+      target: ldm.modules.diffusionmodules.openaimodel.UNetModel
+      params:
+        image_size: 32
+        in_channels: 8
+        out_channels: 4
+        model_channels: 192
+        attention_resolutions: [ 1,2,4,8 ]   # 32, 16, 8, 4
+        num_res_blocks: 2
+        channel_mult: [ 1,2,2,4,4 ]  # 32, 16, 8, 4, 2
+        num_heads: 8
+        use_scale_shift_norm: True
+        resblock_updown: True
+
+        ### change
+        use_spatial_transformer: true 
+        transformer_depth: 1
+        context_dim: 192
+
+    first_stage_config:
+      # target: ldm.models.autoencoder.AutoencoderKL_rimage
+      target: ldm.models.autoencoder.AutoencoderKL_rimage_finetune
+      params:
+        embed_dim: 4
+        monitor: "val/rec_loss"
+        # ckpt_path: '/data6/ryqiu/latent-diffusion/logs/2024-08-01T22-31-46_autoencoder_kl_32x32x4_rimage/checkpoints/epoch=000328.ckpt'
+        # ckpt_path: '/data6/ryqiu/GMS/SD-VAE-weights/768-v-ema-first-stage-VAE.ckpt'
+        ckpt_path:  '/data6/ryqiu/latent-diffusion/ldm/logs/2024-10-24T15-35-15_autoencoder_kl_32x32x4_rimage_onlyDecoder/checkpoints/epoch=000933.ckpt'
+        # ckpt_path:  '/data6/ryqiu/latent-diffusion/logs/2024-09-06T18-36-14_autoencoder_kl_32x32x4_rimage_finetune/checkpoints/epoch=000035.ckpt'
+        ddconfig:
+          double_z: True
+          z_channels: 4
+          resolution: 256
+          in_channels: 3
+          out_ch: 3
+          ch: 128
+          ch_mult: [ 1,2,4,4]  # num_down = len(ch_mult)-1
+          num_res_blocks: 2
+          attn_resolutions: [ ]
+          dropout: 0.0
+        lossconfig:
+          target: torch.nn.Identity
+
+    cond_stage_config:
+      # target: ldm.models.autoencoder.AutoencoderKL_rimage
+      target: ldm.models.autoencoder.AutoencoderKL_rimage_finetune
+      params:
+        embed_dim: 4
+        monitor: "val/rec_loss"
+        # ckpt_path: '/data6/ryqiu/latent-diffusion/logs/2024-08-01T22-31-46_autoencoder_kl_32x32x4_rimage/checkpoints/epoch=000328.ckpt'
+        # ckpt_path: '/data6/ryqiu/GMS/SD-VAE-weights/768-v-ema-first-stage-VAE.ckpt'
+        ckpt_path:  '/data6/ryqiu/latent-diffusion/ldm/logs/2024-10-24T15-35-15_autoencoder_kl_32x32x4_rimage_onlyDecoder/checkpoints/epoch=000933.ckpt'
+        # ckpt_path: '/data6/ryqiu/latent-diffusion/logs/2024-09-06T18-36-14_autoencoder_kl_32x32x4_rimage_finetune/checkpoints/epoch=000035.ckpt'
+        ddconfig:
+          double_z: True
+          z_channels: 4
+          resolution: 256
+          in_channels: 3
+          out_ch: 3
+          ch: 128
+          ch_mult: [ 1,2,4,4]  # num_down = len(ch_mult)-1
+          num_res_blocks: 2
+          attn_resolutions: [ ]
+          dropout: 0.0
+        lossconfig:
+          target: torch.nn.Identity
+
+    # cond_stage_config:
+    #   target: ldm.modules.encoders.modules.FrozenClipImageEmbedder
+    #   params:
+    #     model: 'ViT-L/14'
+
+data:
+  target: main.DataModuleFromConfig
+  params:
+    batch_size: 1
+    # num_workers: 2
+    wrap: false
+    train:
+      target: ldm.data.mask.ImageNetTrain
+      params:
+        config:
+          size: 256
+          shuffle: true
+    validation:
+      target: ldm.data.mask.ImageNetValidation
+      params:
+        config:
+          size: 256
+          shuffle: false 
+
+
+lightning:
+  callbacks:
+    image_logger:
+      target: main.ImageLogger
+      params:
+        batch_frequency: 5000
+        max_images: 1
+        increase_log_steps: False
+
+
+  trainer:
+    benchmark: True
+    gpus: 1 
+    max_epochs: 1000 #debugging option.
